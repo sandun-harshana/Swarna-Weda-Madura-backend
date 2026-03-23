@@ -11,8 +11,70 @@ export async function createProduct(req, res) {
     }
 
 	try {
-        
-		const productData = req.body;
+        const {
+            productID,
+            name,
+            altNames,
+            description,
+            images,
+            price,
+            labelledPrice,
+            category,
+            stock,
+        } = req.body;
+
+        if (
+            !productID ||
+            !name ||
+            !description ||
+            !category ||
+            !Array.isArray(images) ||
+            images.length === 0
+        ) {
+            res.status(400).json({
+                message: "Missing required product fields",
+            });
+            return;
+        }
+
+        const existing = await Product.findOne({ productID: productID.trim() });
+        if (existing) {
+            res.status(409).json({
+                message: "Product ID already exists",
+            });
+            return;
+        }
+
+        const parsedPrice = Number(price);
+        const parsedLabelledPrice = Number(labelledPrice);
+        const parsedStock = Number(stock);
+
+        if (
+            Number.isNaN(parsedPrice) ||
+            Number.isNaN(parsedLabelledPrice) ||
+            Number.isNaN(parsedStock)
+        ) {
+            res.status(400).json({
+                message: "Price, labelledPrice, and stock must be valid numbers",
+            });
+            return;
+        }
+
+        const normalizedAltNames = Array.isArray(altNames)
+            ? altNames.map((value) => String(value).trim()).filter(Boolean)
+            : [];
+
+        const productData = {
+            productID: productID.trim(),
+            name: name.trim(),
+            altNames: normalizedAltNames,
+            description: description.trim(),
+            images,
+            price: parsedPrice,
+            labelledPrice: parsedLabelledPrice,
+            category: category.trim(),
+            stock: parsedStock,
+        };
 
 		const product = new Product(productData);
 

@@ -109,8 +109,16 @@ export function createUser(req, res) {
 }
 
 export function loginUser(req, res) {
+	const email = req.body.email?.trim().toLowerCase();
+	if (!email || !req.body.password) {
+		res.status(400).json({
+			message: "Email and password are required",
+		});
+		return;
+	}
+
 	User.findOne({
-		email: req.body.email,
+		email,
 	}).then((user) => {
 		if (user == null) {
 			res.status(404).json({

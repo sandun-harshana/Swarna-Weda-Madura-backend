@@ -4,58 +4,74 @@ import User from "../models/user.js";
 
 dotenv.config();
 
-const defaultEmails = [
-	"erandaisuru1315@gmail.com",
-	"sandunharshana2020@gmail.com",
-];
+const GREEN = "\x1b[32m";
+const RED = "\x1b[31m";
+const YELLOW = "\x1b[33m";
+const RESET = "\x1b[0m";
 
-const cliEmails = process.argv.slice(2).map((email) => email.trim()).filter(Boolean);
-const emails = cliEmails.length > 0 ? cliEmails : defaultEmails;
+function parseEmails() {
+    const cliEmails = process.argv.slice(2).map((email) => email.trim().toLowerCase()).filter(Boolean);
+    if (cliEmails.length > 0) {
+        return [...new Set(cliEmails)];
+    }
 
-if (!process.env.MONGO_URI) {
-	console.error("MONGO_URI is missing. Add it to backend/.env before running this script.");
-	process.exit(1);
-}
+    const envEmails = (process.env.ADMIN_EMAILS || "")
+        .split(",")
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean);
 
-if (emails.length === 0) {
-	console.error("No email addresses provided. Usage: node scripts/promote-admins.mjs user@example.com");
-	process.exit(1);
+    return [...new Set(envEmails)];
 }
 
 async function run() {
-	await mongoose.connect(process.env.MONGO_URI);
+    if (!process.env.MONGO_URI) {
+        console.error(`${RED}[ADMIN PROMOTE] FAIL${RESET} MONGO_URI is not configured`);
+        process.exit(1);
+    }
 
-	const result = await User.updateMany(
-		{ email: { $in: emails } },
-		{ $set: { role: "admin", isEmailVerified: true } }
-	);
+    const emails = parseEmails();
+    if (emails.length === 0) {
+        console.error(`${YELLOW}[ADMIN PROMOTE] Usage${RESET} npm run promote-admins -- user@example.com`);
+        console.error(`${YELLOW}[ADMIN PROMOTE] Hint${RESET} or define ADMIN_EMAILS in .env`);
+        process.exit(1);
+    }
 
-	const users = await User.find(
-		{ email: { $in: emails } },
-		{ email: 1, role: 1, isEmailVerified: 1, _id: 0 }
-	).lean();
+    try {
+        await mongoose.connect(process.env.MONGO_URI, {
+            serverSelectionTimeoutMS: 7000,
+            socketTimeoutMS: 45000,
+        });
 
-	const found = users.map((u) => u.email);
-	const missing = emails.filter((e) => !found.includes(e));
+        const users = await User.find({ email: { $in: emails } }).select("email role isEmailVerified");
+        const foundEmails = new Set(users.map((user) => user.email));
+        const missingEmails = emails.filter((email) => !foundEmails.has(email));
 
-	console.log(
-		JSON.stringify(
-			{
-				matched: result.matchedCount,
-				modified: result.modifiedCount,
-				users,
-				missing,
-			},
-			null,
-			2
-		)
-	);
+        if (users.length > 0) {
+            await User.updateMany(
+                { email: { $in: Array.from(foundEmails) } },
+                { $set: { role: "admin", isEmailVerified: true } }
+            );
+        }
 
-	await mongoose.connection.close();
+        if (users.length > 0) {
+            console.log(`${GREEN}[ADMIN PROMOTE] OK${RESET} Promoted: ${Array.from(foundEmails).join(", ")}`);
+        }
+
+        if (missingEmails.length > 0) {
+            console.log(`${YELLOW}[ADMIN PROMOTE] NOT FOUND${RESET} ${missingEmails.join(", ")}`);
+        }
+
+        if (users.length === 0) {
+            process.exit(1);
+        }
+    } catch (error) {
+        console.error(`${RED}[ADMIN PROMOTE] FAIL${RESET} ${error.message || "Unknown error"}`);
+        process.exit(1);
+    } finally {
+        if (mongoose.connection.readyState !== 0) {
+            await mongoose.disconnect();
+        }
+    }
 }
 
-run().catch(async (error) => {
-	console.error("Failed to promote admins:", error.message);
-	await mongoose.connection.close();
-	process.exit(1);
-});
+run();

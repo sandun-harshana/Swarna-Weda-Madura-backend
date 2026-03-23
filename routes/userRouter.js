@@ -1,5 +1,6 @@
 import express from 'express';
 import { blockOrUnblockUser, changePasswordViaOTP, createUser, getAllUsers, getMembershipInfo, getUser, googleLogin, loginUser, resendVerificationOTP, sendOTP, updatePassword, updateUserProfile, verifyEmailOTP } from '../controllers/userController.js';
+import { authenticate, isAdmin } from '../middleware/auth.js';
 
 
 const userRouter = express.Router();
@@ -17,5 +18,12 @@ userRouter.post("/change-password/",changePasswordViaOTP)
 userRouter.post("/verify-email",verifyEmailOTP)
 userRouter.post("/resend-verification-otp",resendVerificationOTP)
 userRouter.put("/me/password", updatePassword)
+userRouter.get("/admin/ping", authenticate, isAdmin, (req, res) => {
+	res.json({
+		message: "Admin access granted",
+		email: req.user.email,
+		role: req.user.role,
+	});
+})
 
 export default userRouter;

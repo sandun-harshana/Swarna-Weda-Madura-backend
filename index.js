@@ -16,6 +16,52 @@ import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 dotenv.config();
 
 const app = express();
+let mongoConnectionPromise;
+
+function getDatabaseErrorMessage(error) {
+    if (!error) {
+        return "Unknown database error";
+    }
+
+    if (error.name === "MongoServerSelectionError") {
+        return "Cannot reach MongoDB cluster. Check Atlas IP access list, DNS, and internet connection.";
+    }
+
+    if (error.name === "MongoParseError") {
+        return "Invalid MONGO_URI format.";
+    }
+
+    if (error.name === "MongoServerError" && error.code === 18) {
+        return "MongoDB authentication failed. Check database username/password.";
+    }
+
+    return error.message || "Unknown database error";
+}
+
+function connectToDatabase() {
+    if (!mongoConnectionPromise) {
+        if (!process.env.MONGO_URI) {
+            throw new Error("MONGO_URI is not configured");
+        }
+
+        mongoConnectionPromise = mongoose
+            .connect(process.env.MONGO_URI, {
+                serverSelectionTimeoutMS: 5000,
+                socketTimeoutMS: 45000,
+            })
+            .then(() => {
+                console.log("Database connected successfully");
+                return mongoose.connection;
+            })
+            .catch((err) => {
+                mongoConnectionPromise = null;
+                console.log("Database connection failed:", err.message);
+                throw err;
+            });
+    }
+
+    return mongoConnectionPromise;
+}
 
 const allowedOrigins = [
     process.env.FRONTEND_URL,
@@ -61,6 +107,20 @@ app.use("/api/users/login", authLimiter);
 app.use("/api/users/register", authLimiter);
 app.use(requestLogger);
 
+app.use(async (req, res, next) => {
+    try {
+        await connectToDatabase();
+        next();
+    } catch (error) {
+        res.status(500).json({
+            message: "Database connection failed",
+            ...(process.env.NODE_ENV !== "production" && {
+                details: getDatabaseErrorMessage(error),
+            }),
+        });
+    }
+});
+
 app.use(
     (req, res, next) => {
         let token = req.header("Authorization");
@@ -83,23 +143,6 @@ app.use(
     }
 );
 
-const connectionString = process.env.MONGO_URI;
-
-
-mongoose.connect(connectionString, {
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000,
-}).then(
-    ()=>{
-        console.log("Database connected Successfully")
-    }
-).catch(
-    (err)=>{
-        console.log("Database connection failed:", err.message)
-        process.exit(1)
-    }
-)
-
 app.get("/health", (req, res) => {
 	res.status(200).json({
 		status: "ok",
@@ -121,8 +164,17 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, 
-    ()=>{
-        console.log(`Server is running on port ${PORT}`)
-    }
-)
+if (!process.env.VERCEL) {
+    connectToDatabase()
+        .then(() => {
+            app.listen(PORT, () => {
+                console.log(`Server is running on port ${PORT}`);
+            });
+        })
+        .catch((error) => {
+            console.error("Startup failed:", getDatabaseErrorMessage(error));
+            process.exit(1);
+        });
+}
+
+export default app;
