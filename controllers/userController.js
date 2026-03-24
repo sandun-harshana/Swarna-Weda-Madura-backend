@@ -479,6 +479,74 @@ export async function blockOrUnblockUser(req, res) {
 	}
 }
 
+export async function updateUserRole(req, res) {
+	if (!isAdmin(req)) {
+		res.status(403).json({
+			message: "Forbidden",
+		});
+		return;
+	}
+
+	const superAdminEmails = (process.env.SUPER_ADMIN_EMAILS || "")
+		.split(",")
+		.map((email) => email.trim().toLowerCase())
+		.filter(Boolean);
+
+	if (superAdminEmails.length > 0 && !superAdminEmails.includes(req.user.email?.toLowerCase())) {
+		res.status(403).json({
+			message: "Only super admins can change user roles",
+		});
+		return;
+	}
+
+	const targetEmail = req.params.email?.trim().toLowerCase();
+	const newRole = req.body?.role?.trim().toLowerCase();
+
+	if (!targetEmail || !newRole) {
+		res.status(400).json({
+			message: "Email and role are required",
+		});
+		return;
+	}
+
+	if (!["admin", "user"].includes(newRole)) {
+		res.status(400).json({
+			message: "Role must be either 'admin' or 'user'",
+		});
+		return;
+	}
+
+	if (req.user.email === targetEmail) {
+		res.status(400).json({
+			message: "You cannot change your own role",
+		});
+		return;
+	}
+
+	try {
+		const user = await User.findOne({ email: targetEmail });
+
+		if (!user) {
+			res.status(404).json({
+				message: "User not found",
+			});
+			return;
+		}
+
+		user.role = newRole;
+		await user.save();
+
+		res.json({
+			message: `User role updated to ${newRole}`,
+		});
+	} catch (err) {
+		console.error(err);
+		res.status(500).json({
+			message: "Failed to update user role",
+		});
+	}
+}
+
 export async function sendOTP(req, res) {
 	const email = req.params.email;
 	if (email == null) {

@@ -1,5 +1,5 @@
 import express from 'express';
-import { blockOrUnblockUser, changePasswordViaOTP, createUser, getAllUsers, getMembershipInfo, getUser, googleLogin, loginUser, resendVerificationOTP, sendOTP, updatePassword, updateUserProfile, verifyEmailOTP } from '../controllers/userController.js';
+import { blockOrUnblockUser, changePasswordViaOTP, createUser, getAllUsers, getMembershipInfo, getUser, googleLogin, loginUser, resendVerificationOTP, sendOTP, updatePassword, updateUserProfile, updateUserRole, verifyEmailOTP } from '../controllers/userController.js';
 import { authenticate, isAdmin } from '../middleware/auth.js';
 
 
@@ -13,6 +13,7 @@ userRouter.put("/me", updateUserProfile)
 userRouter.post("/google-login",googleLogin)
 userRouter.get("/all-users", getAllUsers)
 userRouter.put("/block/:email",blockOrUnblockUser)
+userRouter.put("/role/:email", updateUserRole)
 userRouter.get("/send-otp/:email",sendOTP)
 userRouter.post("/change-password/",changePasswordViaOTP)
 userRouter.post("/verify-email",verifyEmailOTP)
